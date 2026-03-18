@@ -2,10 +2,13 @@ name: Polaris Scan (Bridge CLI)
 
 on:
   push:
-    branches: [master, main, develop]
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   polaris-scan:
@@ -19,7 +22,8 @@ jobs:
           unzip -q bridge.zip -d /tmp/bridge
           rm bridge.zip
 
-      - name: Run Polaris Scan
+      - name: Run Polaris Scan (Full - Push)
+        if: github.event_name == 'push'
         run: |
           /tmp/bridge/bridge-cli-bundle-*/bridge-cli --stage polaris \
             polaris.serverurl="${{ vars.POLARIS_URL }}" \
@@ -28,6 +32,38 @@ jobs:
             polaris.project.name="${{ github.event.repository.name }}" \
             polaris.branch.name="${{ github.ref_name }}" \
             polaris.assessment.types="SAST,SCA" \
-            polaris.test.sast.type="SAST-FULL"
+            polaris.test.sast.type="SAST-FULL" \
+            polaris.reports.sarif.create=true \
+            polaris.reports.sarif.severities="CRITICAL,HIGH,MEDIUM" \
+            polaris.reports.sarif.issue.types="SAST,SCA"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Polaris Scan (Rapid - PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          /tmp/bridge/bridge-cli-bundle-*/bridge-cli --stage polaris \
+            polaris.serverurl="${{ vars.POLARIS_URL }}" \
+            polaris.accesstoken="${{ secrets.POLARIS_ACCESS_TOKEN }}" \
+            polaris.application.name="${{ github.event.repository.name }}" \
+            polaris.project.name="${{ github.event.repository.name }}" \
+            polaris.branch.name="${{ github.head_ref }}" \
+            polaris.branch.parent.name="${{ github.base_ref }}" \
+            polaris.assessment.types="SAST,SCA" \
+            polaris.test.sast.type="SAST-RAPID" \
+            polaris.prcomment.enabled=true \
+            polaris.prcomment.severities="CRITICAL,HIGH,MEDIUM" \
+            github.repository.branch.name="${{ github.ref_name }}" \
+            github.repository.name="${{ github.event.repository.name }}" \
+            github.repository.owner.name="${{ github.repository_owner }}" \
+            github.repository.pull.number="${{ github.event.number }}" \
+            github.user.token="${{ secrets.GITHUB_TOKEN }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SARIF
+        if: github.event_name == 'push' && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .blackduck/integrations/polaris/sarif/report.sarif.json
+        continue-on-error: true
