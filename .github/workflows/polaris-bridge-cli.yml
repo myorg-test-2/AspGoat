@@ -1,0 +1,33 @@
+name: Polaris Scan (Bridge CLI)
+
+on:
+  push:
+    branches: [master, main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  polaris-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Bridge CLI
+        run: |
+          curl -sL https://repo.blackduck.com/bds-integrations-release/com/blackduck/integration/bridge/binaries/bridge-cli-bundle/latest/bridge-cli-bundle-linux64.zip -o bridge.zip
+          unzip -q bridge.zip -d /tmp/bridge
+          rm bridge.zip
+
+      - name: Run Polaris Scan
+        run: |
+          /tmp/bridge/bridge-cli-bundle-*/bridge-cli --stage polaris \
+            polaris.serverurl="${{ vars.POLARIS_URL }}" \
+            polaris.accesstoken="${{ secrets.POLARIS_ACCESS_TOKEN }}" \
+            polaris.application.name="${{ github.event.repository.name }}" \
+            polaris.project.name="${{ github.event.repository.name }}" \
+            polaris.branch.name="${{ github.ref_name }}" \
+            polaris.assessment.types="SAST,SCA" \
+            polaris.test.sast.type="SAST-FULL"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
